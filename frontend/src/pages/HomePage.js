@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Button, Input, StatCard, CloudCard } from '../components/ui';
 import faylogo from '../assets/faylogo.png';
 import usePageBackground from '../hooks/usePageBackground';
+import { useLogout } from '../hooks/useLogout';
+
 
 const HomePage = () => {
     const [activeTab, setActiveTab] = useState('upload');
@@ -11,6 +13,7 @@ const HomePage = () => {
     const [instanceName, setInstanceName] = useState('');
     const [instanceIp, setInstanceIp] = useState('');
     const [instanceRegion, setInstanceRegion] = useState('');
+    const {logout: handleLogout} = useLogout();
     
     // GHCR Configuration
     const [ghcrUsername, setGhcrUsername] = useState('');
@@ -23,7 +26,7 @@ const HomePage = () => {
     const [dockerImage, setDockerImage] = useState('');
     const [dns, setDns] = useState('');
     const [publicIp, setPublicIp] = useState('');
-    const [port, setPort] = useState('');
+    const [healthUrl, setHealthUrl] = useState('');
     
     const [isDeploying, setIsDeploying] = useState(false);
     const [deployStatus, setDeployStatus] = useState('');
@@ -31,11 +34,63 @@ const HomePage = () => {
     
     // User instances for Control Panel
     const [instances, setInstances] = useState([]);
-    const [showAddInstance, setShowAddInstance] = useState(false);
-    const [newInstanceDns, setNewInstanceDns] = useState('');
-    const [newInstanceIp, setNewInstanceIp] = useState('');
+    const [isLoadingInstances, setIsLoadingInstances] = useState(false);
 
     usePageBackground();
+
+    // Fetch user instances on component mount and when switching to dashboard tab
+    useEffect(() => {
+        if (activeTab === 'dashboard') {
+            fetchInstances();
+        }
+    }, [activeTab]);
+
+    const fetchInstances = async () => {
+        try {
+            const user = JSON.parse(localStorage.getItem("user"));
+            if (!user || !user._id) return;
+
+            setIsLoadingInstances(true);
+            const res = await fetch(`http://localhost:4000/api/gcp/instances/${user._id}`, {
+                headers: {
+                    Authorization: `Bearer ${user.token}`
+                }
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setInstances(data.instances);
+            }
+        } catch (err) {
+            console.error("Error fetching instances:", err);
+        } finally {
+            setIsLoadingInstances(false);
+        }
+    };
+
+    const handleDeleteInstance = async (instanceId) => {
+        if (!window.confirm("Are you sure you want to delete this instance?")) return;
+
+        try {
+            const user = JSON.parse(localStorage.getItem("user"));
+            const res = await fetch(`http://localhost:4000/api/gcp/instance/${instanceId}`, {
+                method: "DELETE",
+                headers: {
+                    Authorization: `Bearer ${user.token}`
+                }
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setInstances(instances.filter(inst => inst._id !== instanceId));
+            } else {
+                alert("Failed to delete instance: " + data.error);
+            }
+        } catch (err) {
+            console.error("Error deleting instance:", err);
+            alert("Error deleting instance");
+        }
+    };
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -57,68 +112,77 @@ const HomePage = () => {
     };
 
     const handleDeploy = async () => {
-        if (!ghcrUsername || !dockerImage) {
-            alert('Please fill in all GHCR details');
-            return;
-        }
-        if (!publicIp) {
-            alert('Please fill in the public IP address');
-            return;
-        }
+        console.log('test');
+        try {
+            const user = JSON.parse(localStorage.getItem("user"));
 
-        setIsDeploying(true);
-        setDeployStatus('Starting deployment...');
+            if (!user || !user._id) {
+                alert("User not authenticated. Please sign in again.");
+                return;
+            }
 
-        const portMapping = port ? `-p ${port}:${port}` : '-p 3000:3000 -p 4000:4000';
+            const token = user.token;             // Token is stored inside user object
+            const userId = user._id;              // MongoDB userId
 
-        const deployScript = `
-            sudo docker pull ghcr.io/${ghcrUsername}/${dockerImage}:${ghcrTag}
+            if (!gcpInstanceId) {
+                alert("Please enter GCP Instance ID!");
+                return;
+            }
 
-            sudo docker stop ${dockerImage}-app 2>/dev/null || true
-            sudo docker rm ${dockerImage}-app 2>/dev/null || true
+            if (!dockerImage) {
+                alert("Please enter full Docker image path!");
+                return;
+            }
 
-            sudo docker run -d \\
-            --name ${dockerImage}-app \\
-            ${portMapping} \\
-            --restart unless-stopped \\
-            ghcr.io/${ghcrUsername}/${dockerImage}:${ghcrTag}
+            if (!publicIp && !dns) {
+                alert("Please provide either Public IP or DNS!");
+                return;
+            }
 
-            echo "DONE"
-            `;
+            const fullImage = dockerImage; // already full input
 
-        const deployConfig = {
-            ghcr: {
-                username: ghcrUsername,
-                image: dockerImage,
-                tag: ghcrTag
-            },
-            gcp: {
-                instanceId: gcpInstanceId,
-                instance: gcpInstance
-            },
-            network: {
-                publicIp: publicIp,
-                dns: dns,
-                port: port
-            },
-            script: deployScript
-        };
+            setIsDeploying(true);
+            setDeployStatus("Registering instance...");
 
-        console.log('Deploy Config:', deployConfig);
-        console.log('Deploy Script:', deployScript);
-        
-        // TODO: Send to backend for actual deployment
-        setTimeout(() => {
+            const payload = {
+                userId,
+                gcpInstanceId,
+                dockerImage: fullImage,
+                dns: dns || null,
+                publicIp: publicIp || null,
+                healthUrl: healthUrl || null
+            };
+
+            console.log("➡️ Sending payload:", payload);
+
+            const res = await fetch("http://localhost:4000/api/gcp/register", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+
+            if (!data.ok) {
+                setIsDeploying(false);
+                setDeployStatus(`❌ Error: ${data.error}`);
+                return;
+            }
+
+            setDeployStatus("✅ Instance registered successfully!");
             setIsDeploying(false);
-            setDeployStatus('Deployment initiated! Check your instance.');
-        }, 2000);
+
+        } catch (err) {
+            console.error("❌ DEPLOY ERROR:", err);
+            setIsDeploying(false);
+            setDeployStatus("❌ Unexpected error. Check console.");
+        }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/';
-    };
+
 
     return (
         <div className="min-h-screen">
@@ -139,18 +203,6 @@ const HomePage = () => {
                         variant={activeTab === 'dashboard' ? 'tabActive' : 'tab'}
                     >
                         Dashboard
-                    </Button>
-                    <Button
-                        onClick={() => setActiveTab('logs')}
-                        variant={activeTab === 'logs' ? 'tabActive' : 'tab'}
-                    >
-                        Logs
-                    </Button>
-                    <Button
-                        onClick={() => setActiveTab('settings')}
-                        variant={activeTab === 'settings' ? 'tabActive' : 'tab'}
-                    >
-                        Settings
                     </Button>
                 </div>
 
@@ -241,7 +293,7 @@ const HomePage = () => {
                                         setDockerImage('');
                                         setDns('');
                                         setPublicIp('');
-                                        setPort('');
+                                        setHealthUrl('');
                                     }}
                                 >
                                     ← Change method
@@ -249,104 +301,70 @@ const HomePage = () => {
 
                                 {/* GHCR Configuration */}
                                 {deployMethod === 'ghcr' && (
-                                    <Card className="mb-6">
-                                        <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[rgb(197,202,233)]">
-                                            <div className="w-8 h-8 bg-[rgb(36,41,46)] rounded flex items-center justify-center text-white">
-                                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-                                                </svg>
-                                            </div>
-                                            <h3 className="text-lg font-semibold text-[rgb(92,107,192)]">Deployment Configuration</h3>
+                                <Card className="mb-6">
+                                    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[rgb(197,202,233)]">
+                                        <div className="w-8 h-8 bg-[rgb(36,41,46)] rounded flex items-center justify-center text-white">
+                                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385..."/>
+                                            </svg>
                                         </div>
+                                        <h3 className="text-lg font-semibold text-[rgb(92,107,192)]">Deployment Configuration</h3>
+                                    </div>
 
-                                        {/* Public Image Requirement Notice */}
-                                        <div className="mb-6 p-3 bg-[rgb(232,234,246)] rounded-lg border border-[rgb(197,202,233)]">
-                                            <p className="text-sm text-[rgb(92,107,192)] flex items-center gap-2">
-                                                <svg className="w-4 h-4 text-[rgb(92,107,192)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                </svg>
-                                                <span><span className="font-semibold">Note:</span> The Docker image must be <span className="font-semibold">public</span></span>
-                                            </p>
-                                        </div>
-                                        
-                                        {/* GHCR Credentials */}
-                                        <div className="mb-6">
-                                            <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">GHCR Image</h4>
+                                    {/* GCP INSTANCE */}
+                                    <div className="mb-6">
+                                        <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">GCP Instance</h4>
+                                        <Input
+                                            label="GCP Instance ID"
+                                            placeholder="my-vm-instance"
+                                            value={gcpInstanceId}
+                                            onChange={(e) => setGcpInstanceId(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* DOCKER IMAGE */}
+                                    <div className="mb-6">
+                                        <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">Docker Image</h4>
+                                        <Input
+                                            label="Full Docker Image"
+                                            placeholder="ghcr.io/00alexo/infobase:latest"
+                                            value={dockerImage}
+                                            onChange={(e) => setDockerImage(e.target.value)}
+                                        />
+                                    </div>
+
+                                    {/* NETWORK */}
+                                    <div className="mb-6">
+                                        <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">Network</h4>
+
+                                        <div className="grid grid-cols-2 gap-4">
                                             <Input
-                                                label="GHCR Username"
-                                                placeholder="e.g., 00alexo"
-                                                value={ghcrUsername}
-                                                onChange={(e) => setGhcrUsername(e.target.value)}
+                                                label="Public IP"
+                                                placeholder="34.76.123.45"
+                                                value={publicIp}
+                                                onChange={(e) => setPublicIp(e.target.value)}
+                                            />
+
+                                            <Input
+                                                label="DNS (optional)"
+                                                placeholder="myapp.example.com"
+                                                value={dns}
+                                                onChange={(e) => setDns(e.target.value)}
                                             />
                                         </div>
 
-                                        {/* Google Cloud Configuration */}
-                                        <div className="mb-6">
-                                            <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">Google Cloud</h4>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <Input
-                                                    label="Instance ID"
-                                                    placeholder="e.g., 1234567890123456789"
-                                                    value={gcpInstanceId}
-                                                    onChange={(e) => setGcpInstanceId(e.target.value)}
-                                                />
-                                                <Input
-                                                    label="Instance Name"
-                                                    placeholder="e.g., vm-instance-1"
-                                                    value={gcpInstance}
-                                                    onChange={(e) => setGcpInstance(e.target.value)}
-                                                />
-                                            </div>
-                                        </div>
+                                        <Input
+                                            className="mt-4"
+                                            label="Health Check URL"
+                                            placeholder="http://34.76.123.45:3000"
+                                            value={healthUrl}
+                                            onChange={(e) => setHealthUrl(e.target.value)}
+                                        />
+                                    </div>
+                                </Card>
+                            )}
 
-                                        {/* Docker Configuration */}
-                                        <div className="mb-6">
-                                            <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">Docker Image</h4>
-                                            <div className="grid grid-cols-3 gap-4">
-                                                <Input
-                                                    label="Image Name"
-                                                    placeholder="e.g., infobase"
-                                                    value={dockerImage}
-                                                    onChange={(e) => setDockerImage(e.target.value)}
-                                                />
-                                                <Input
-                                                    label="Tag"
-                                                    placeholder="e.g., latest"
-                                                    value={ghcrTag}
-                                                    onChange={(e) => setGhcrTag(e.target.value)}
-                                                />
-                                                <Input
-                                                    label="Port"
-                                                    placeholder="e.g., 3000 (optional)"
-                                                    value={port}
-                                                    onChange={(e) => setPort(e.target.value)}
-                                                />
-                                            </div>
-                                            <p className="text-xs text-[rgb(159,168,218)] mt-2">
-                                                Image: ghcr.io/{ghcrUsername || 'username'}/{dockerImage || 'image'}:{ghcrTag || 'latest'}
-                                            </p>
-                                        </div>
 
-                                        {/* Network Configuration */}
-                                        <div>
-                                            <h4 className="text-sm font-semibold text-[rgb(121,134,203)] mb-3 uppercase tracking-wide">Network</h4>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <Input
-                                                    label="Public IP"
-                                                    placeholder="e.g., 34.76.123.45"
-                                                    value={publicIp}
-                                                    onChange={(e) => setPublicIp(e.target.value)}
-                                                />
-                                                <Input
-                                                    label="DNS (optional)"
-                                                    placeholder="e.g., app.example.com"
-                                                    value={dns}
-                                                    onChange={(e) => setDns(e.target.value)}
-                                                />
-                                            </div>
-                                        </div>
-                                    </Card>
-                                )}
 
                                 {/* Dockerfile Upload */}
                                 {deployMethod === 'dockerfile' && (
@@ -417,10 +435,14 @@ const HomePage = () => {
                                     <Button
                                         className="flex-1"
                                         onClick={handleDeploy}
-                                        disabled={isDeploying || (deployMethod === 'ghcr' && (!ghcrUsername || !dockerImage || !publicIp)) || (deployMethod === 'dockerfile' && !uploadedFile)}
+                                        disabled={
+                                            isDeploying ||
+                                            (deployMethod === 'ghcr' && (!gcpInstanceId || !dockerImage || (!publicIp && !dns)))
+                                        }
                                     >
                                         {isDeploying ? 'Deploying...' : 'Deploy to Cloud'}
                                     </Button>
+
                                     <Button
                                         variant="secondary"
                                         onClick={() => {
@@ -432,7 +454,7 @@ const HomePage = () => {
                                             setDockerImage('');
                                             setDns('');
                                             setPublicIp('');
-                                            setPort('');
+                                            setHealthUrl('');
                                             setUploadedFile(null);
                                         }}
                                         disabled={isDeploying}
@@ -451,14 +473,31 @@ const HomePage = () => {
                                 <h1 className="text-4xl font-bold text-[rgb(92,107,192)] mb-2">Control Panel</h1>
                                 <p className="text-lg text-[rgb(121,134,203)]">Manage your cloud instances</p>
                             </div>
-                            <div className="flex items-center gap-2 text-base">
+                            <div className="flex items-center gap-4 text-base">
                                 <span className="text-[rgb(159,168,218)] font-medium">{instances.length} instance{instances.length !== 1 ? 's' : ''}</span>
+                                <Button 
+                                    variant="ghost" 
+                                    onClick={fetchInstances}
+                                    disabled={isLoadingInstances}
+                                >
+                                    {isLoadingInstances ? 'Refreshing...' : 'Refresh'}
+                                </Button>
                             </div>
                         </div>
 
                         {/* Instances List */}
                         <div className="flex flex-col gap-5 mb-8">
-                            {instances.length === 0 ? (
+                            {isLoadingInstances ? (
+                                <Card className="text-center py-16">
+                                    <div className="flex items-center justify-center gap-3">
+                                        <svg className="animate-spin h-6 w-6 text-[rgb(92,107,192)]" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span className="text-[rgb(92,107,192)]">Loading instances...</span>
+                                    </div>
+                                </Card>
+                            ) : instances.length === 0 ? (
                                 <Card className="text-center py-16">
                                     <div className="w-20 h-20 bg-[rgb(232,234,246)] rounded-full flex items-center justify-center mx-auto mb-6">
                                         <svg className="w-10 h-10 text-[rgb(159,168,218)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -469,49 +508,57 @@ const HomePage = () => {
                                     <p className="text-base text-[rgb(159,168,218)] mb-4">Add your first cloud instance to get started</p>
                                 </Card>
                             ) : (
-                                instances.map((instance, index) => (
-                                    <Card key={index} className="hover:border-[rgb(121,134,203)] transition-all p-6">
+                                instances.map((instance) => (
+                                    <Card key={instance._id} className="hover:border-[rgb(121,134,203)] transition-all p-6">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-5">
                                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                                                    instance.status === 'online' 
+                                                    instance.status === 'running' 
                                                         ? 'bg-green-100' 
-                                                        : instance.status === 'aws-failover'
+                                                        : instance.status === 'recovering'
                                                             ? 'bg-orange-100'
                                                             : 'bg-red-100'
                                                 }`}>
                                                     <div className={`w-4 h-4 rounded-full ${
-                                                        instance.status === 'online' 
+                                                        instance.status === 'running' 
                                                             ? 'bg-green-500' 
-                                                            : instance.status === 'aws-failover'
+                                                            : instance.status === 'recovering'
                                                                 ? 'bg-orange-500'
                                                                 : 'bg-red-500'
                                                     }`}></div>
                                                 </div>
                                                 <div>
                                                     <div className="flex items-center gap-2 mb-2">
+                                                        <span className="font-semibold text-[rgb(92,107,192)]">{instance.originalInstanceId}</span>
                                                         <span className={`text-sm font-semibold px-3 py-1 rounded-full ${
-                                                            instance.status === 'online'
+                                                            instance.status === 'running'
                                                                 ? 'bg-green-100 text-green-700'
-                                                                : instance.status === 'aws-failover'
+                                                                : instance.status === 'recovering'
                                                                     ? 'bg-orange-100 text-orange-700'
                                                                     : 'bg-red-100 text-red-700'
                                                         }`}>
-                                                            {instance.status === 'online' 
-                                                                ? 'Online' 
-                                                                : instance.status === 'aws-failover'
-                                                                    ? 'Running on AWS'
-                                                                    : 'Offline'}
+                                                            {instance.status === 'running' 
+                                                                ? 'Running' 
+                                                                : instance.status === 'recovering'
+                                                                    ? 'Recovering (AWS)'
+                                                                    : 'Failed, running on AWS instead'}
+                                                        </span>
+                                                        <span className="text-xs bg-[rgb(232,234,246)] text-[rgb(121,134,203)] px-2 py-1 rounded-full uppercase">
+                                                            {instance.provider}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-8 text-base">
+                                                    <div className="flex items-center gap-6 text-sm">
                                                         <div>
                                                             <span className="text-[rgb(159,168,218)]">DNS: </span>
                                                             <span className="font-mono text-[rgb(92,107,192)] font-medium">{instance.dns || '-'}</span>
                                                         </div>
                                                         <div>
-                                                            <span className="text-[rgb(159,168,218)]">Public IP: </span>
+                                                            <span className="text-[rgb(159,168,218)]">IP: </span>
                                                             <span className="font-mono text-[rgb(92,107,192)] font-medium">{instance.publicIp || '-'}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[rgb(159,168,218)]">Image: </span>
+                                                            <span className="font-mono text-[rgb(92,107,192)] font-medium text-xs">{instance.dockerImage}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -520,9 +567,7 @@ const HomePage = () => {
                                                 <Button 
                                                     variant="ghost" 
                                                     className="text-red-500 hover:bg-red-50 p-2"
-                                                    onClick={() => {
-                                                        setInstances(instances.filter((_, i) => i !== index));
-                                                    }}
+                                                    onClick={() => handleDeleteInstance(instance._id)}
                                                 >
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -535,74 +580,17 @@ const HomePage = () => {
                             )}
                         </div>
 
-                        {/* Add New Instance */}
-                        {!showAddInstance ? (
-                            <Button 
-                                variant="outline" 
-                                className="w-full py-5 border-dashed flex items-center justify-center gap-3 text-lg"
-                                onClick={() => setShowAddInstance(true)}
-                            >
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                </svg>
-                                Add New Instance
-                            </Button>
-                        ) : (
-                            <Card className="p-8">
-                                <div className="flex items-center gap-4 mb-6 pb-5 border-b border-[rgb(197,202,233)]">
-                                    <div className="w-10 h-10 bg-[rgb(92,107,192)] rounded-xl flex items-center justify-center text-white">
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                        </svg>
-                                    </div>
-                                    <h3 className="text-2xl font-bold text-[rgb(92,107,192)]">Add New Instance</h3>
-                                </div>
-                                <div className="grid grid-cols-2 gap-5 mb-6">
-                                    <Input
-                                        label="DNS"
-                                        placeholder="e.g., app.example.com"
-                                        value={newInstanceDns}
-                                        onChange={(e) => setNewInstanceDns(e.target.value)}
-                                    />
-                                    <Input
-                                        label="Public IP"
-                                        placeholder="e.g., 34.76.123.45"
-                                        value={newInstanceIp}
-                                        onChange={(e) => setNewInstanceIp(e.target.value)}
-                                    />
-                                </div>
-                                <div className="flex gap-4">
-                                    <Button
-                                        className="px-6 py-3"
-                                        onClick={() => {
-                                            if (newInstanceIp) {
-                                                setInstances([...instances, {
-                                                    status: 'offline',
-                                                    dns: newInstanceDns,
-                                                    publicIp: newInstanceIp
-                                                }]);
-                                                setNewInstanceDns('');
-                                                setNewInstanceIp('');
-                                                setShowAddInstance(false);
-                                            }
-                                        }}
-                                        disabled={!newInstanceIp}
-                                    >
-                                        Add Instance
-                                    </Button>
-                                    <Button 
-                                        variant="secondary"
-                                        onClick={() => {
-                                            setShowAddInstance(false);
-                                            setNewInstanceDns('');
-                                            setNewInstanceIp('');
-                                        }}
-                                    >
-                                        Cancel
-                                    </Button>
-                                </div>
-                            </Card>
-                        )}
+                        {/* Add New Instance - redirects to Deploy tab */}
+                        <Button 
+                            variant="outline" 
+                            className="w-full py-5 border-dashed flex items-center justify-center gap-3 text-lg"
+                            onClick={() => setActiveTab('upload')}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                            </svg>
+                            Add New Instance
+                        </Button>
                     </div>
                 )}
                 {activeTab === 'logs' && (

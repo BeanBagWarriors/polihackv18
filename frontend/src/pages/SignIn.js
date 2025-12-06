@@ -1,18 +1,54 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { Input, Button } from '../components/ui';
 import usePageBackground from '../hooks/usePageBackground';
+import { useAuthContext } from '../hooks/useAuthContext';
 
 const SignIn = () => {
+    const navigate = useNavigate();
+    const { dispatch } = useAuthContext();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
     usePageBackground();
 
-    const handleSignIn = (e) => {
+    const handleSignIn = async (e) => {
         e.preventDefault();
+        setIsLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch('http://localhost:4000/api/user/signin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setError(data);
+                setIsLoading(false);
+                return;
+            }
+
+            // Save user to localStorage
+            localStorage.setItem('user', JSON.stringify(data));
+
+            // Update auth context
+            dispatch({ type: 'LOGIN', payload: data });
+
+            setIsLoading(false);
+            navigate('/home');
+        } catch (err) {
+            setError('Something went wrong. Please try again.');
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -50,9 +86,24 @@ const SignIn = () => {
                     
                     <button 
                         type="submit"
-                        className="p-4 text-lg font-semibold text-white rounded-xl cursor-pointer transition-all duration-300 mt-3 bg-[rgb(92,107,192)] hover:bg-[rgb(121,134,203)] hover:-translate-y-0.5 shadow-[0_4px_12px_rgba(92,107,192,0.25)] hover:shadow-[0_8px_20px_rgba(92,107,192,0.35)]"
+                        disabled={isLoading}
+                        className={`p-4 text-lg font-semibold text-white rounded-xl cursor-pointer transition-all duration-300 mt-3 flex items-center justify-center gap-2 ${
+                            isLoading 
+                                ? 'bg-[rgb(159,168,218)] cursor-not-allowed' 
+                                : 'bg-[rgb(92,107,192)] hover:bg-[rgb(121,134,203)] hover:-translate-y-0.5 shadow-[0_4px_12px_rgba(92,107,192,0.25)] hover:shadow-[0_8px_20px_rgba(92,107,192,0.35)]'
+                        }`}
                     >
-                        Sign In
+                        {isLoading ? (
+                            <>
+                                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Signing In...
+                            </>
+                        ) : (
+                            'Sign In'
+                        )}
                     </button>
                 </form>
                 

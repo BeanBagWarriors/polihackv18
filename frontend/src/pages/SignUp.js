@@ -3,9 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import { Input, Button } from '../components/ui';
 import usePageBackground from '../hooks/usePageBackground';
+import { useAuthContext } from '../hooks/useAuthContext';
 
 const SignUp = () => {
     const navigate = useNavigate();
+    const { dispatch } = useAuthContext();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -14,26 +16,40 @@ const SignUp = () => {
 
     usePageBackground();
 
-    const handleSignUp = (e) => {
+    const handleSignUp = async (e) => {
         e.preventDefault();
-        
-        if (password !== confirmPassword) {
-            setError('Passwords do not match');
-            return;
-        }
-        
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters');
-            return;
-        }
-        
         setIsLoading(true);
         setError('');
-        
-        // Simulate account creation
-        setTimeout(() => {
+
+        try {
+            const response = await fetch('http://localhost:4000/api/user/signup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password, confirmPassword }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                setError(data);
+                setIsLoading(false);
+                return;
+            }
+
+            // Save user to localStorage
+            localStorage.setItem('user', JSON.stringify(data));
+
+            // Update auth context
+            dispatch({ type: 'LOGIN', payload: data });
+
+            setIsLoading(false);
             navigate('/payment');
-        }, 1000);
+        } catch (err) {
+            setError('Something went wrong. Please try again.');
+            setIsLoading(false);
+        }
     };
 
     return (
