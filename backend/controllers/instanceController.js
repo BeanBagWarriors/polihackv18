@@ -1,4 +1,9 @@
+// ============================================================================
+// INSTANCE CONTROLLER WITH FAILOVER + DNS SWITCH
+// ============================================================================
+
 require("dotenv").config();
+const axios = require("axios");
 
 const {
   EC2Client,
@@ -12,6 +17,9 @@ const {
   waitUntilInstanceRunning
 } = require("@aws-sdk/client-ec2");
 
+// ============================================================================
+// AWS CONFIG
+// ============================================================================
 const AWS_REGION = process.env.AWS_REGION || "eu-central-1";
 const ec2 = new EC2Client({
   region: AWS_REGION,
@@ -21,10 +29,60 @@ const ec2 = new EC2Client({
   },
 });
 
+// ============================================================================
+// CLOUDFLARE DNS SWITCH FUNCTION
+// ============================================================================
+async function updateDNS(targetIp) {
+  try {
+    const zoneId = process.env.CF_ZONE_ID;
+    const token = process.env.CF_API_TOKEN;
+    const dnsName = process.env.DNS_NAME;
 
-// -------------------------------------------------------------
-// generateUserData()
-// -------------------------------------------------------------
+    // GET record ID
+    const getUrl = `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?type=A&name=${dnsName}`;
+
+    const recordRes = await axios.get(getUrl, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!recordRes.data.success || recordRes.data.result.length === 0) {
+      console.error("❌ DNS record not found in Cloudflare:", recordRes.data);
+      return;
+    }
+
+    const recordId = recordRes.data.result[0].id;
+
+    const updateUrl = `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`;
+
+    const payload = {
+      type: "A",
+      name: dnsName,
+      content: targetIp,
+      ttl: 60,
+      proxied: false
+    };
+
+    const updateRes = await axios.put(updateUrl, payload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      }
+    });
+
+    if (!updateRes.data.success) {
+      console.error("❌ Error updating DNS:", updateRes.data);
+    } else {
+      console.log(`🌐 DNS UPDATED → ${dnsName} now points to ${targetIp}`);
+    }
+
+  } catch (err) {
+    console.error("❌ DNS Switch Error:", err.response?.data || err.message);
+  }
+}
+
+// ============================================================================
+// USER DATA
+// ============================================================================
 function generateUserData(image) {
   return Buffer.from(`#!/bin/bash
 sudo apt-get update -y
@@ -42,10 +100,9 @@ sudo docker run -d \
 `).toString("base64");
 }
 
-
-// -------------------------------------------------------------
-// getOrCreateSecurityGroup()
-// -------------------------------------------------------------
+// ============================================================================
+// SECURITY GROUP
+// ============================================================================
 async function getOrCreateSecurityGroup() {
   const groupName = "my-ec2-sg";
 
@@ -59,7 +116,7 @@ async function getOrCreateSecurityGroup() {
   const createSg = await ec2.send(
     new CreateSecurityGroupCommand({
       GroupName: groupName,
-      Description: "Failover SG"
+      Description: "Failover SG",
     })
   );
 
@@ -79,10 +136,9 @@ async function getOrCreateSecurityGroup() {
   return sgId;
 }
 
-
-// -------------------------------------------------------------
-// createEC2FailoverInstance()
-// -------------------------------------------------------------
+// ============================================================================
+// FAILOVER (GCP → AWS)
+// ============================================================================
 exports.createEC2FailoverInstance = async (instance) => {
   console.log("⚠️ FAILOVER: Starting AWS instance...");
 
@@ -103,12 +159,12 @@ exports.createEC2FailoverInstance = async (instance) => {
   const awsInstanceId = run.Instances[0].InstanceId;
 
   await waitUntilInstanceRunning(
-    { client: ec2, maxWaitTime: 180 },
+    { client: ec2, maxWaitTime: 120 },
     { InstanceIds: [awsInstanceId] }
   );
 
   const allocationId = process.env.AWS_EIP_ALLOCATION_ID;
-  const publicIp = process.env.AWS_EIP_PUBLIC_IP;
+  const publicIp = process.env.AWS_IP;
 
   await ec2.send(
     new AssociateAddressCommand({
@@ -116,6 +172,9 @@ exports.createEC2FailoverInstance = async (instance) => {
       AllocationId: allocationId,
     })
   );
+
+  // 🔥 UPDATE DNS TO AWS
+  await updateDNS(process.env.AWS_IP);
 
   return {
     instanceId: awsInstanceId,
@@ -127,65 +186,60 @@ exports.createEC2FailoverInstance = async (instance) => {
 };
 
 
-
-// ==================================================================
-// INTERNAL FUNCTION: terminateAWSInstance(awsInstanceId)
-// ==================================================================
+// ============================================================================
+// INTERNAL TERMINATE FUNCTION (used by HealthChecker)
+// ============================================================================
 async function terminateAWSInstance(awsInstanceId) {
   console.log(`💀 Terminating AWS instance ${awsInstanceId}...`);
 
-  const publicIp = process.env.AWS_EIP_PUBLIC_IP;
+  const publicIp = process.env.AWS_IP;
 
   try {
-    // Step 1 — Disassociate Elastic IP
     await ec2.send(
       new DisassociateAddressCommand({
         PublicIp: publicIp
       })
     );
-    console.log("🔌 EIP disassociated");
   } catch {
-    console.log("⚠️ EIP was not associated or already free");
+    console.log("⚠️ EIP was already free");
   }
 
-  // Step 2 — Terminate instance
   await ec2.send(
     new TerminateInstancesCommand({
       InstanceIds: [awsInstanceId],
     })
   );
 
-  console.log("☠️ Instance terminated:", awsInstanceId);
+  console.log("💀 AWS instance terminated:", awsInstanceId);
+
+  // 🔥 MOVE DNS BACK TO GCP
+  await updateDNS(process.env.GCP_IP);
+
   return true;
 }
 
+// export for healthchecker
+exports.terminateAWSInstance = terminateAWSInstance;
 
-// -------------------------------------------------------------
-// Express Endpoint wrapper (optional)
-// -------------------------------------------------------------
+
+// ============================================================================
+// EXPRESS ENDPOINT WRAPPER (optional)
+// ============================================================================
 exports.terminateEC2Instance = async (req, res) => {
   try {
     const { instanceId } = req.body;
-
-    if (!instanceId) {
-      return res.status(400).json({ ok: false, error: "Missing instanceId" });
-    }
-
     await terminateAWSInstance(instanceId);
 
     return res.json({
       ok: true,
-      message: "AWS instance terminated successfully",
+      message: "AWS instance terminated & DNS restored",
       instanceId
     });
 
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.toString() });
+    return res.status(500).json({
+      ok: false,
+      error: err.toString()
+    });
   }
 };
-
-
-// -------------------------------------------------------------
-// EXPORT INTERNAL FUNCTION FOR HEALTHCHECKER
-// -------------------------------------------------------------
-exports.terminateAWSInstance = terminateAWSInstance;
