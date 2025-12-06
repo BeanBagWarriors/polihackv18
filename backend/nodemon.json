@@ -1,0 +1,11 @@
+{
+  "watch": ["src", "controllers", "routes", "models"],
+  "ignore": [
+    "temp_gcp_projects",
+    "uploads",
+    "*.zip",
+    "*.log"
+  ],
+  "ext": "js,json",
+  "exec": "node index.js"
+}
