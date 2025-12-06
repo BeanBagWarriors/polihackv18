@@ -5,6 +5,9 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
+const userRoutes = require('./routes/userRoutes');
+const instanceRoutes = require("./routes/instanceRoutes.js");
+const gcpInstanceRoutes = require("./routes/gcpInstanceRoutes");
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN;
 
@@ -26,6 +29,10 @@ app.use((req, res, next) =>{
     }
     next();
 })
+app.use('/api/user', userRoutes);
+app.use("/api/instance", instanceRoutes);
+app.use("/api/gcp", gcpInstanceRoutes);
+
 mongoose.connect(process.env.mongoDB)
 .then(() => {
     console.log("MongoDB connected");
