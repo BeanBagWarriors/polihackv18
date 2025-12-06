@@ -36,6 +36,7 @@ app.use("/api/gcp", gcpInstanceRoutes);
 mongoose.connect(process.env.mongoDB)
 .then(() => {
     console.log("MongoDB connected");
+    require("./utils/healthChecker");
 })
 .catch((error) => {
     console.error("MongoDB connection failed:", error);

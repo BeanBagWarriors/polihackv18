@@ -7,6 +7,8 @@ const {
   CreateSecurityGroupCommand,
   DescribeSecurityGroupsCommand,
   AssociateAddressCommand,
+  TerminateInstancesCommand,
+  DisassociateAddressCommand,
   waitUntilInstanceRunning
 } = require("@aws-sdk/client-ec2");
 
@@ -19,11 +21,12 @@ const ec2 = new EC2Client({
   },
 });
 
+
 // -------------------------------------------------------------
-// User Data – versiunea RAPIDĂ (ca funcția originală)
+// generateUserData()
 // -------------------------------------------------------------
 function generateUserData(image) {
-  const script = `#!/bin/bash
+  return Buffer.from(`#!/bin/bash
 sudo apt-get update -y
 sudo apt-get install -y docker.io
 sudo systemctl start docker
@@ -31,23 +34,17 @@ sudo systemctl enable docker
 
 sudo docker pull ${image}
 
-sudo docker images > /var/log/docker-images.txt
-
 sudo docker run -d \
   --name user-app \
   -p 3000:3000 \
   -p 4000:4000 \
-  ${image} \
-  > /var/log/docker-run.txt 2>&1
-
-echo "DONE" > /var/log/deploy-status.txt
-`;
-
-  return Buffer.from(script).toString("base64");
+  ${image}
+`).toString("base64");
 }
 
+
 // -------------------------------------------------------------
-// Security Group
+// getOrCreateSecurityGroup()
 // -------------------------------------------------------------
 async function getOrCreateSecurityGroup() {
   const groupName = "my-ec2-sg";
@@ -62,7 +59,7 @@ async function getOrCreateSecurityGroup() {
   const createSg = await ec2.send(
     new CreateSecurityGroupCommand({
       GroupName: groupName,
-      Description: "Failover SG",
+      Description: "Failover SG"
     })
   );
 
@@ -82,8 +79,9 @@ async function getOrCreateSecurityGroup() {
   return sgId;
 }
 
+
 // -------------------------------------------------------------
-// FAILOVER – versiunea RAPIDĂ
+// createEC2FailoverInstance()
 // -------------------------------------------------------------
 exports.createEC2FailoverInstance = async (instance) => {
   console.log("⚠️ FAILOVER: Starting AWS instance...");
@@ -127,3 +125,67 @@ exports.createEC2FailoverInstance = async (instance) => {
     createdAt: new Date(),
   };
 };
+
+
+
+// ==================================================================
+// INTERNAL FUNCTION: terminateAWSInstance(awsInstanceId)
+// ==================================================================
+async function terminateAWSInstance(awsInstanceId) {
+  console.log(`💀 Terminating AWS instance ${awsInstanceId}...`);
+
+  const publicIp = process.env.AWS_EIP_PUBLIC_IP;
+
+  try {
+    // Step 1 — Disassociate Elastic IP
+    await ec2.send(
+      new DisassociateAddressCommand({
+        PublicIp: publicIp
+      })
+    );
+    console.log("🔌 EIP disassociated");
+  } catch {
+    console.log("⚠️ EIP was not associated or already free");
+  }
+
+  // Step 2 — Terminate instance
+  await ec2.send(
+    new TerminateInstancesCommand({
+      InstanceIds: [awsInstanceId],
+    })
+  );
+
+  console.log("☠️ Instance terminated:", awsInstanceId);
+  return true;
+}
+
+
+// -------------------------------------------------------------
+// Express Endpoint wrapper (optional)
+// -------------------------------------------------------------
+exports.terminateEC2Instance = async (req, res) => {
+  try {
+    const { instanceId } = req.body;
+
+    if (!instanceId) {
+      return res.status(400).json({ ok: false, error: "Missing instanceId" });
+    }
+
+    await terminateAWSInstance(instanceId);
+
+    return res.json({
+      ok: true,
+      message: "AWS instance terminated successfully",
+      instanceId
+    });
+
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.toString() });
+  }
+};
+
+
+// -------------------------------------------------------------
+// EXPORT INTERNAL FUNCTION FOR HEALTHCHECKER
+// -------------------------------------------------------------
+exports.terminateAWSInstance = terminateAWSInstance;
