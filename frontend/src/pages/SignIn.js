@@ -1,28 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import Navbar from '../components/Navbar';
+import { Input, Button } from '../components/ui';
+import usePageBackground from '../hooks/usePageBackground';
 
 const SignIn = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
-    useEffect(() => {
-        const gradient = 'linear-gradient(135deg, rgb(232,234,246) 0%, rgb(197,202,233) 100%)';
-        document.documentElement.style.background = gradient;
-        document.documentElement.style.minHeight = '100vh';
-        document.body.style.background = gradient;
-        document.body.style.minHeight = '100vh';
-        document.body.style.margin = '0';
-        document.body.style.overflow = 'hidden';
-        
-        return () => {
-            document.documentElement.style.background = '';
-            document.documentElement.style.minHeight = '';
-            document.body.style.background = '';
-            document.body.style.minHeight = '';
-            document.body.style.overflow = '';
-        };
-    }, []);
+    usePageBackground();
 
     const handleSignIn = (e) => {
         e.preventDefault();
@@ -30,7 +17,9 @@ const SignIn = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-5">
+        <div className="min-h-screen flex flex-col">
+            <Navbar variant="auth" />
+            <div className="flex-1 flex items-center justify-center p-5">
             <div className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(92,107,192,0.15)] p-12 w-full max-w-[440px] border border-[rgb(197,202,233)]">
                 <div className="text-center mb-8">
                     <h2 className="text-[32px] font-bold text-[rgb(92,107,192)] mb-2">Welcome Back</h2>
@@ -84,6 +73,7 @@ const SignIn = () => {
                     </Link>
                 </div>
             </div>
+        </div>
         </div>
     );
 }

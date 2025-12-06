@@ -1,45 +1,15 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import Navbar from '../components/Navbar';
+import { Card, Button, StatCard } from '../components/ui';
+import usePageBackground from '../hooks/usePageBackground';
 
 const Welcome = () => {
-
-    useEffect(() => {
-        const gradient = 'linear-gradient(135deg, rgb(232,234,246) 0%, rgb(197,202,233) 100%)';
-        document.documentElement.style.background = gradient;
-        document.documentElement.style.minHeight = '100vh';
-        document.body.style.background = gradient;
-        document.body.style.minHeight = '100vh';
-        document.body.style.margin = '0';
-        
-        return () => {
-            document.documentElement.style.background = '';
-            document.documentElement.style.minHeight = '';
-            document.body.style.background = '';
-            document.body.style.minHeight = '';
-        };
-    }, []);
+    usePageBackground();
 
     return (
         <div className="min-h-screen">
-            {/* Navigation */}
-            <nav className="flex justify-between items-center px-8 py-5 max-w-6xl mx-auto">
-                <div className="text-xl font-semibold text-[rgb(92,107,192)]">
-                    Faylo
-                </div>
-                <div className="flex gap-8 items-center">
-                    <a href="#features" className="text-sm text-[rgb(121,134,203)] hover:text-[rgb(92,107,192)] transition-colors">Features</a>
-                    <a href="#how" className="text-sm text-[rgb(121,134,203)] hover:text-[rgb(92,107,192)] transition-colors">How it works</a>
-                    <Link to="/signin" className="text-sm text-[rgb(92,107,192)] font-medium hover:text-[rgb(121,134,203)] transition-colors">
-                        Sign in
-                    </Link>
-                    <Link 
-                        to="/signup" 
-                        className="bg-[rgb(92,107,192)] text-white text-sm px-5 py-2 rounded-lg font-medium hover:bg-[rgb(121,134,203)] transition-all"
-                    >
-                        Get started
-                    </Link>
-                </div>
-            </nav>
+            <Navbar variant="public" />
 
             {/* Hero */}
             <section className="px-6 pt-20 pb-24 max-w-4xl mx-auto">
