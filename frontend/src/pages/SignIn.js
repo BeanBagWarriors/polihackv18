@@ -13,17 +13,16 @@ const SignIn = () => {
 
     const handleSignIn = (e) => {
         e.preventDefault();
-        // Interface only - no backend
     };
 
     return (
         <div className="min-h-screen flex flex-col">
             <Navbar variant="auth" />
             <div className="flex-1 flex items-center justify-center p-5">
-            <div className="bg-white rounded-2xl shadow-[0_8px_32px_rgba(92,107,192,0.15)] p-12 w-full max-w-[440px] border border-[rgb(197,202,233)]">
+            <div className="bg-white rounded-2xl shadow-brand-lg p-12 w-full max-w-[440px] border border-[rgb(197,202,233)]">
                 <div className="text-center mb-8">
-                    <h2 className="text-[32px] font-bold text-[rgb(92,107,192)] mb-2">Welcome Back</h2>
-                    <p className="text-base text-[rgb(121,134,203)] font-normal">Sign in to continue to your account</p>
+                    <h2 className="text-4xl font-bold text-[rgb(92,107,192)] mb-3">Welcome Back</h2>
+                    <p className="text-base text-[rgb(121,134,203)] font-medium">Sign in to continue to your account</p>
                 </div>
                 
                 <form onSubmit={handleSignIn} className="flex flex-col gap-5">

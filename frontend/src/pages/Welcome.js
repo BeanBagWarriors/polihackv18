@@ -10,38 +10,34 @@ const Welcome = () => {
     return (
         <div className="min-h-screen">
             <Navbar variant="public" />
-
-            {/* Hero */}
-            <section className="px-6 pt-20 pb-24 max-w-4xl mx-auto">
-                <p className="text-sm text-[rgb(121,134,203)] mb-4 tracking-wide uppercase">
+            <section className="px-6 pt-24 pb-32 max-w-4xl mx-auto">
+                <p className="text-xs text-[rgb(121,134,203)] mb-6 tracking-widest uppercase font-semibold">
                     Multi-cloud failover
                 </p>
-                <h1 className="text-4xl md:text-5xl font-semibold text-[rgb(92,107,192)] mb-5 leading-tight">
+                <h1 className="text-5xl md:text-6xl font-bold text-[rgb(92,107,192)] mb-6 leading-tight">
                     Keep your services online,
                     <br />
-                    even when clouds go down
+                    <span className="bg-gradient-to-r from-[rgb(92,107,192)] to-[rgb(121,134,203)] bg-clip-text text-transparent">even when clouds go down</span>
                 </h1>
-                <p className="text-lg text-[rgb(121,134,203)] mb-8 max-w-xl leading-relaxed">
+                <p className="text-lg text-[rgb(121,134,203)] mb-10 max-w-2xl leading-relaxed font-medium">
                     Deploy your Docker containers to AWS and Google Cloud. 
                     When one fails, traffic switches to the other in milliseconds.
                 </p>
-                <div className="flex gap-3">
+                <div className="flex gap-4">
                     <Link 
                         to="/signup" 
-                        className="bg-[rgb(92,107,192)] text-white px-6 py-3 rounded-lg font-medium hover:bg-[rgb(121,134,203)] transition-all"
+                        className="bg-[rgb(92,107,192)] text-white px-7 py-3 rounded-lg font-semibold hover:bg-[rgb(121,134,203)] hover:shadow-brand transition-all duration-200 active:scale-95"
                     >
                         Start free trial
                     </Link>
                     <a 
                         href="#how"
-                        className="border border-[rgb(179,186,227)] text-[rgb(92,107,192)] px-6 py-3 rounded-lg font-medium hover:bg-white transition-all"
+                        className="border-2 border-[rgb(179,186,227)] text-[rgb(92,107,192)] px-7 py-3 rounded-lg font-semibold hover:bg-white hover:border-[rgb(121,134,203)] transition-all duration-200 active:scale-95"
                     >
                         Learn more
                     </a>
                 </div>
             </section>
-
-            {/* Stats */}
             <section className="px-6 pb-20">
                 <div className="max-w-4xl mx-auto grid grid-cols-4 gap-4">
                     <div className="bg-white rounded-xl p-5 border border-[rgb(197,202,233)]">
@@ -63,7 +59,6 @@ const Welcome = () => {
                 </div>
             </section>
 
-            {/* How it works */}
             <section id="how" className="px-6 py-20">
                 <div className="max-w-4xl mx-auto">
                     <p className="text-sm text-[rgb(121,134,203)] mb-2 tracking-wide uppercase">How it works</p>
@@ -101,8 +96,6 @@ const Welcome = () => {
                     </div>
                 </div>
             </section>
-
-            {/* Features */}
             <section id="features" className="px-6 py-20">
                 <div className="max-w-4xl mx-auto">
                     <p className="text-sm text-[rgb(121,134,203)] mb-2 tracking-wide uppercase">Features</p>
@@ -137,8 +130,6 @@ const Welcome = () => {
                     </div>
                 </div>
             </section>
-
-            {/* Providers */}
             <section className="px-6 py-16">
                 <div className="max-w-4xl mx-auto">
                     <p className="text-sm text-[rgb(159,168,218)] mb-6 text-center">Deploys to</p>
@@ -159,8 +150,6 @@ const Welcome = () => {
                     </div>
                 </div>
             </section>
-
-            {/* Stateless explanation */}
             <section className="px-6 py-20">
                 <div className="max-w-3xl mx-auto bg-white rounded-xl p-8 border border-[rgb(197,202,233)]">
                     <p className="text-xs text-[rgb(159,168,218)] mb-2 uppercase tracking-wide">Good to know</p>
@@ -187,8 +176,6 @@ const Welcome = () => {
                     </div>
                 </div>
             </section>
-
-            {/* CTA */}
             <section className="px-6 py-20">
                 <div className="max-w-3xl mx-auto bg-[rgb(92,107,192)] rounded-xl p-10 text-center">
                     <h2 className="text-2xl font-semibold text-white mb-3">
@@ -208,8 +195,6 @@ const Welcome = () => {
                     </p>
                 </div>
             </section>
-
-            {/* Footer */}
             <footer className="px-6 py-8 border-t border-[rgb(197,202,233)]">
                 <div className="max-w-4xl mx-auto flex justify-between items-center">
                     <div className="text-sm font-medium text-[rgb(92,107,192)]">

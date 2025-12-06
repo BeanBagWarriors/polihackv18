@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  * {
+    font-family: 'Poppins', sans-serif;
+  }
+  
+  body {
+    @apply text-[rgb(92,107,192)] antialiased;
+  }
+  
+  h1, h2, h3 {
+    @apply font-semibold;
+  }
+}
