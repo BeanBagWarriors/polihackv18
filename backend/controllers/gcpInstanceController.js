@@ -48,7 +48,7 @@ exports.registerGCPInstance = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ ERROR registerGCPInstance:", err);
+    console.error("ERROR registerGCPInstance:", err);
     return res.status(500).json({ ok: false, error: err.toString() });
   }
 };
@@ -72,7 +72,7 @@ exports.getUserInstances = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ ERROR getUserInstances:", err);
+    console.error("ERROR getUserInstances:", err);
     return res.status(500).json({ ok: false, error: err.toString() });
   }
 };
@@ -103,7 +103,7 @@ exports.deleteInstance = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ ERROR deleteInstance:", err);
+    console.error("ERROR deleteInstance:", err);
     return res.status(500).json({ ok: false, error: err.toString() });
   }
 };
